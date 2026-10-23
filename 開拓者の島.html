@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>開拓者の島</title>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);--bg:#f4efe6;--fg:#2b2a28;--card:#fff;--line:#d8d0c0;--sea:#bfe0ee;color-scheme:light}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1f1e1c;--fg:#eee;--card:#2c2a27;--line:#4a463f;--sea:#27465a;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#1f1e1c;--fg:#eee;--card:#2c2a27;--line:#4a463f;--sea:#27465a;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,"Hiragino Sans","Yu Gothic",sans-serif}
+h1{font-size:18px;margin:0;padding:10px 14px}
+#app{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:12px;padding:0 12px 16px;max-width:1000px;margin:auto}
+@media(max-width:760px){#app{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:10px}
+#board{width:100%;background:var(--sea);border-radius:10px;max-height:80vh}
+button,select{font:inherit;padding:5px 10px;margin:2px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--fg);cursor:pointer}
+button:disabled{opacity:.4;cursor:default}button.on{outline:2px solid #3b7dd8}
+.res span{display:inline-block;margin:2px 6px 2px 0;padding:1px 8px;border-radius:10px;color:#111}
+#log{font-size:12px;max-height:110px;overflow:auto;opacity:.85}
+.hint{cursor:pointer}
+#board{background:radial-gradient(circle at 50% 45%,var(--sea),color-mix(in srgb,var(--sea) 65%,#06324a))}
+.card{box-shadow:0 1px 4px rgba(0,0,0,.12)}
+button{transition:transform .1s,filter .15s}button:not(:disabled):hover{transform:translateY(-1px);filter:brightness(1.08)}
+button.big{background:#e0a800;color:#222;font-weight:700;font-size:17px;padding:8px 18px;animation:pulse 1.2s infinite}
+@keyframes pulse{50%{box-shadow:0 0 0 6px rgba(224,168,0,.35)}}
+.dicebox{display:flex;gap:10px;align-items:center;min-height:64px;margin-top:6px}
+.die{width:50px;height:50px;background:#fff;border-radius:11px;display:inline-grid;grid:repeat(3,1fr)/repeat(3,1fr);padding:7px;box-shadow:inset 0 -3px 0 rgba(0,0,0,.15),0 3px 6px rgba(0,0,0,.3)}
+.die i{width:9px;height:9px;border-radius:50%;margin:auto}.die i.p{background:#222}
+.dicebox.roll .die{animation:tumble .35s linear infinite}.dicebox.roll .die+.die{animation-direction:reverse}
+@keyframes tumble{0%{transform:rotate(0) translateY(0)}25%{transform:rotate(90deg) translateY(-14px)}50%{transform:rotate(180deg) translateY(0)}75%{transform:rotate(270deg) translateY(-8px)}100%{transform:rotate(360deg) translateY(0)}}
+.dicebox.land .die{animation:land .5s ease-out}
+@keyframes land{0%{transform:scale(1.6) rotate(25deg)}60%{transform:scale(.9)}100%{transform:scale(1)}}
+.sum{font-size:26px;margin-left:6px}
+.dicebox.tap{cursor:pointer}.dicebox.tap .die{animation:bob 1.2s ease-in-out infinite}.dicebox.tap .die+.die{animation-delay:.3s}
+@keyframes bob{50%{transform:translateY(-7px)}}
+polygon.hit{animation:glow .9s ease-in-out infinite}
+@keyframes glow{50%{stroke-opacity:.3}}
+#chat{max-height:140px;overflow:auto;font-size:13px;margin-bottom:6px}
+#ct{width:100%;font:inherit;padding:5px 8px;margin-top:4px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--fg)}
+</style></head><body>
+<h1>🏝️ 開拓者の島 <small style="font-weight:400">（カタン風・ホットシート版）</small></h1>
+<div id="app"></div>
+<script>
+const RES=['wood','brick','sheep','wheat','ore'];
+const JP={wood:'木材',brick:'レンガ',sheep:'羊毛',wheat:'小麦',ore:'鉄鉱石',desert:'砂漠'};
+const COL={wood:'#4f8a4b',brick:'#c4693d',sheep:'#a8d27a',wheat:'#e8c547',ore:'#9aa0a8',desert:'#e3d3a1'};
+const PC=['#d64545','#3b7dd8','#e8912d','#8a5fd0','#2a9d6f','#d86fb0'];
+const COST={road:{wood:1,brick:1},settle:{wood:1,brick:1,sheep:1,wheat:1},city:{wheat:2,ore:3}};
+const S=46;
+const EM={wood:'🌲',brick:'🧱',sheep:'🐑',wheat:'🌾',ore:'⛰️',desert:'🏜️'};
+const esc=t=>t.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const pips=n=>[...Array(9)].map((_,i)=>`<i class="${[[],[4],[0,8],[0,4,8],[0,2,6,8],[0,2,4,6,8],[0,2,3,5,6,8]][n].includes(i)?'p':''}"></i>`).join('');
+const dieH=n=>`<div class="die">${pips(n)}</div>`;
+// ---- 乱数(シード付き。通信時に全員で同じ結果になる) ----
+function rnd(s){s.seed=(s.seed+0x6D2B79F5)|0;let t=Math.imul(s.seed^s.seed>>>15,1|s.seed);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}
+// ---- 盤面の幾何(固定) ----
+function buildBoard(R){
+ const hexes=[],V=new Map(),E=new Map(),verts=[],edges=[];
+ for(let r=-R;r<=R;r++)for(let q=-R;q<=R;q++)if(Math.abs(q+r)<=R)hexes.push({q,r});
+ hexes.forEach((h,i)=>{h.x=S*Math.sqrt(3)*(h.q+h.r/2);h.y=S*1.5*h.r;h.v=[];
+  for(let k=0;k<6;k++){const a=Math.PI/180*(60*k-30),x=h.x+S*Math.cos(a),y=h.y+S*Math.sin(a),key=Math.round(x)+','+Math.round(y);
+   if(!V.has(key)){V.set(key,verts.length);verts.push({x,y,hex:[],adj:[]})}
+   const id=V.get(key);h.v.push(id);verts[id].hex.push(i)}
+  for(let k=0;k<6;k++){const a=h.v[k],b=h.v[(k+1)%6],key=Math.min(a,b)+'-'+Math.max(a,b);
+   if(!E.has(key)){E.set(key,edges.length);edges.push({a:Math.min(a,b),b:Math.max(a,b),n:0});verts[a].adj.push(b);verts[b].adj.push(a)}edges[E.get(key)].n++}});
+ const coast=edges.filter(e=>e.n==1).map(e=>({a:e.a,b:e.b,m:Math.atan2((verts[e.a].y+verts[e.b].y)/2,(verts[e.a].x+verts[e.b].x)/2)})).sort((p,q)=>p.m-q.m);
+ const K=R>2?12:9,ports=Array.from({length:K},(_,i)=>coast[Math.floor(i*coast.length/K)]);
+ return{hexes,verts,edges,E,ports,R}}
+let B=buildBoard(2);
+const eid=(a,b)=>B.E.get(Math.min(a,b)+'-'+Math.max(a,b));
+// ---- ゲーム状態 ----
+const Z=()=>({knight:0,vp:0,road:0,plenty:0,monopoly:0});
+function newGame(n,seed){B=buildBoard(n>4?3:2);
+ const s={n,seed,phase:'setup',step:0,sub:'settle',turn:0,build:{},roads:{},dice:null,lastV:null,log:[],winner:null,
+  players:Array.from({length:n},(_,i)=>({name:'P'+(i+1),res:{wood:0,brick:0,sheep:0,wheat:0,ore:0},dev:Z(),nw:Z(),k:0}))};
+ const t=[].concat(...Object.entries(n>4?{wood:7,sheep:7,wheat:7,brick:7,ore:7,desert:2}:{wood:4,sheep:4,wheat:4,brick:3,ore:3,desert:1}).map(([k,c])=>Array(c).fill(k)));
+ for(let i=t.length-1;i>0;i--){const j=Math.floor(rnd(s)*(i+1));[t[i],t[j]]=[t[j],t[i]]}
+ const nb=[5,2,6,3,8,10,9,12,11,4,8,10,9,4,5,6,3,11],nums=[...nb,...nb];let k=0;
+ s.tiles=t.map(x=>({type:x,num:x=='desert'?0:nums[k++]}));const K=B.ports.length,pt=[...RES];while(pt.length<K)pt.push('any');for(let i=K-1;i>0;i--){const j=Math.floor(rnd(s)*(i+1));[pt[i],pt[j]]=[pt[j],pt[i]]}s.ports=pt;
+ const dk=[...Array(14).fill('knight'),...Array(5).fill('vp'),'road','road','plenty','plenty','monopoly','monopoly'];for(let i=dk.length-1;i>0;i--){const j=Math.floor(rnd(s)*(i+1));[dk[i],dk[j]]=[dk[j],dk[i]]}
+ s.deck=dk;s.devPlayed=false;s.free=0;s.army=null;s.lroad=null;s.len=null;s.disc=[];s.chat=[];s.back=null;s.offer=null;s.robber=t.indexOf('desert');return s}
+const cur=s=>s.phase=='setup'?(s.step<s.n?s.step:2*s.n-1-s.step):s.turn;
+const total=P=>RES.reduce((a,r)=>a+P.res[r],0);
+const afford=(P,c)=>Object.keys(c).every(r=>P.res[r]>=c[r]);
+const pay=(P,c)=>{if(!afford(P,c))return 0;for(const r in c)P.res[r]-=c[r];return 1};
+const vp=(s,p)=>Object.values(s.build).reduce((a,b)=>a+(b.p==p?(b.city?2:1):0),0)+(s.lroad==p?2:0)+(s.army==p?2:0)+s.players[p].dev.vp;
+function longest(s,p){let best=0;const dfs=(v,used,len)=>{best=Math.max(best,len);B.verts[v].adj.forEach(u=>{const e=eid(v,u);if(s.roads[e]===p&&!used.has(e)){const bd=s.build[u];used.add(e);if(bd&&bd.p!=p)best=Math.max(best,len+1);else dfs(u,used,len+1);used.delete(e)}})};
+ Object.keys(s.roads).forEach(e=>{if(s.roads[e]===p)[B.edges[e].a,B.edges[e].b].forEach(v=>dfs(v,new Set(),0))});return best}
+function updRoad(s){const L=s.players.map((_,i)=>longest(s,i));s.len=L;const mx=Math.max(...L);if(mx<5){s.lroad=null;return}
+ if(s.lroad!=null&&L[s.lroad]==mx)return;const c=L.map((l,i)=>l==mx?i:-1).filter(i=>i>=0);s.lroad=c.length==1?c[0]:null}
+const cards=P=>RES.flatMap(r=>Array(P.res[r]).fill(r));
+const ratio=(s,p,r)=>{let m=4;B.ports.forEach((pt,i)=>{const ty=s.ports[i];if([pt.a,pt.b].some(v=>s.build[v]&&s.build[v].p==p))m=Math.min(m,ty=='any'?3:ty==r?2:4)});return m};
+function canSettle(s,v,p,free){return!s.build[v]&&B.verts[v].adj.every(u=>!s.build[u])&&(free||B.verts[v].adj.some(u=>s.roads[eid(v,u)]===p))}
+function canRoad(s,e,p){if(s.roads[e]!=null)return 0;const{a,b}=B.edges[e];
+ return[a,b].some(v=>{const bd=s.build[v];if(bd)return bd.p==p;return B.verts[v].adj.some(u=>{const f=eid(v,u);return f!=e&&s.roads[f]===p})})}
+// ---- reducer: 全ての操作はここを通る(将来はこのactionをサーバー経由で配信) ----
+function reduce(s,a){
+ const p=cur(s),P=s.players[p],log=m=>s.log.unshift(P.name+' '+m);
+ if(a.t=='chat'){const t=String(a.text||'').trim().slice(0,200);if(!t||!s.players[a.who])return;s.chat.push({who:a.who,text:t});if(s.chat.length>100)s.chat.shift();return}
+ if(s.winner!=null)return'ゲームは終了しています';
+ switch(a.t){
+ case'settle':
+  if(s.phase=='setup'){if(s.sub!='settle')return'先に道路を置いてください';if(!canSettle(s,a.v,p,1))return'そこには置けません';
+   s.build[a.v]={p,city:0};s.lastV=a.v;s.sub='road';
+   if(s.step>=s.n)B.verts[a.v].hex.forEach(h=>{const ty=s.tiles[h].type;if(ty!='desert')P.res[ty]++});return}
+  if(s.phase!='main')return'今は建設できません';if(!canSettle(s,a.v,p,0))return'そこには置けません';
+  if(!pay(P,COST.settle))return'資源が足りません';s.build[a.v]={p,city:0};log('が開拓地を建てた');break;
+ case'city':{if(s.phase!='main')return'今は建設できません';const b=s.build[a.v];if(!b||b.p!=p||b.city)return'自分の開拓地を選んでください';
+  if(!pay(P,COST.city))return'資源が足りません';b.city=1;log('が都市にした');break}
+ case'road':
+  if(s.phase=='setup'){if(s.sub!='road')return'先に開拓地を置いてください';const ed=B.edges[a.e];
+   if(s.roads[a.e]!=null||(ed.a!=s.lastV&&ed.b!=s.lastV))return'そこには置けません';
+   s.roads[a.e]=p;s.sub='settle';s.step++;if(s.step==2*s.n){s.phase='roll';s.turn=0}return}
+  if(s.phase!='main')return'今は建設できません';if(!canRoad(s,a.e,p))return'そこには置けません';
+  if(s.free>0)s.free--;else if(!pay(P,COST.road))return'資源が足りません';s.roads[a.e]=p;log('が道路を建てた');break;
+ case'roll':{if(s.phase!='roll')return'すでに振りました';
+  const d=[1,2].map(()=>1+Math.floor(rnd(s)*6)),sum=d[0]+d[1];s.dice=d;log('が '+sum+' を出した');
+  if(sum==7){s.disc=[];s.players.forEach((Q,i)=>{const n=total(Q);if(n>7)s.disc.push({p:i,n:Math.floor(n/2)})});s.phase=s.disc.length?'discard':'robber'}
+  else{s.tiles.forEach((t,h)=>{if(t.num==sum&&h!=s.robber)B.hexes[h].v.forEach(v=>{const b=s.build[v];if(b)s.players[b.p].res[t.type]+=b.city?2:1})});s.phase='main'}
+  return}
+ case'robber':{if(s.phase!='robber')return'今は動かせません';if(a.h==s.robber)return'別のタイルを選んでください';
+  s.robber=a.h;const vs=new Set();
+  B.hexes[a.h].v.forEach(v=>{const b=s.build[v];if(b&&b.p!=p&&total(s.players[b.p])>0)vs.add(b.p)});
+  if(vs.size){const arr=[...vs],q=arr[Math.floor(rnd(s)*arr.length)],Q=s.players[q],c=cards(Q),r=c[Math.floor(rnd(s)*c.length)];Q.res[r]--;P.res[r]++;log('が '+Q.name+' から1枚奪った')}
+  s.phase=s.back||'main';s.back=null;return}
+ case'trade':{if(s.phase!='main')return'今は交換できません';const k=ratio(s,p,a.give);if(a.give==a.get||P.res[a.give]<k)return k+'枚必要です';
+  P.res[a.give]-=k;P.res[a.get]++;log('が交換 '+JP[a.give]+'×'+k+'→'+JP[a.get]);return}
+ case'offer':{if(s.phase!='main')return'今は提案できません';const{to,give,gn,get,tn}=a;if(to==p||give==get||!(gn>0)||!(tn>0))return'内容が正しくありません';if(P.res[give]<gn)return'手札が足りません';
+  s.offer={from:p,to,give,gn,get,tn};log('が '+s.players[to].name+' に提案 '+JP[give]+'×'+gn+'⇄'+JP[get]+'×'+tn);return}
+ case'answer':{const o=s.offer;if(!o)return'提案がありません';const F=s.players[o.from],T=s.players[o.to];
+  if(a.ok){if(T.res[o.get]<o.tn||F.res[o.give]<o.gn)return'手札が足りず成立しません';F.res[o.give]-=o.gn;T.res[o.give]+=o.gn;T.res[o.get]-=o.tn;F.res[o.get]+=o.tn;s.log.unshift(T.name+' が承諾、取引成立')}
+  else s.log.unshift(T.name+' が拒否');s.offer=null;return}
+ case'discard':{if(s.phase!='discard')return'今は捨てられません';const d=s.disc[0],Q=s.players[d.p];let n=0;for(const r of RES){const x=a.c[r]||0;if(x<0||x>Q.res[r])return'手札を超えています';n+=x}
+  if(n!=d.n)return d.n+'枚選んでください';RES.forEach(r=>Q.res[r]-=a.c[r]||0);s.log.unshift(Q.name+' が'+n+'枚捨てた');s.disc.shift();if(!s.disc.length)s.phase='robber';return}
+ case'buydev':{if(s.phase!='main')return'今は買えません';if(!s.deck.length)return'山札がありません';if(!pay(P,{sheep:1,wheat:1,ore:1}))return'資源が足りません';
+  const c=s.deck.pop();P.dev[c]++;if(c!='vp')P.nw[c]++;log('が発展カードを購入');break}
+ case'play':{const c=a.c;if(s.devPlayed)return'このターンは使用済みです';if(!(s.phase=='main'||(s.phase=='roll'&&c=='knight')))return'今は使えません';
+  if(c=='vp'||!(P.dev[c]-P.nw[c]>0))return'使えるカードがありません';if(c=='plenty'&&!(RES.includes(a.r1)&&RES.includes(a.r2)))return'資源を選んでください';
+  P.dev[c]--;s.devPlayed=true;
+  if(c=='knight'){P.k++;if(P.k>=3&&s.army!=p&&P.k>(s.army==null?2:s.players[s.army].k))s.army=p;s.back=s.phase;s.phase='robber'}
+  else if(c=='road')s.free=2;
+  else if(c=='plenty'){P.res[a.r1]++;P.res[a.r2]++}
+  else{let t=0;s.players.forEach((Q,i)=>{if(i!=p){t+=Q.res[a.r1];Q.res[a.r1]=0}});P.res[a.r1]+=t}
+  log('が'+{knight:'騎士',road:'街道建設',plenty:'収穫',monopoly:'独占'}[c]+'を使用');break}
+ case'end':if(s.phase!='main')return'まだ終了できません';s.turn=(s.turn+1)%s.n;s.phase='roll';s.dice=null;s.offer=null;s.devPlayed=false;s.free=0;for(const k in P.nw)P.nw[k]=0;return;
+ }
+ updRoad(s);if(vp(s,p)>=10){s.winner=p;log('の勝利!')}}
+// ---- UI ----
+let G=null,tool=null,msg='';
+function legal(s,p){const o={v:[],e:[],h:[]},P=s.players[p];
+ if(s.winner!=null)return o;
+ if(s.phase=='setup'){if(s.sub=='settle')B.verts.forEach((_,v)=>canSettle(s,v,p,1)&&o.v.push(v));
+  else B.edges.forEach((ed,e)=>s.roads[e]==null&&(ed.a==s.lastV||ed.b==s.lastV)&&o.e.push(e))}
+ else if(s.phase=='robber')s.tiles.forEach((_,h)=>h!=s.robber&&o.h.push(h));
+ else if(s.phase=='main'){
+  if(tool=='settle'&&afford(P,COST.settle))B.verts.forEach((_,v)=>canSettle(s,v,p,0)&&o.v.push(v));
+  if(tool=='city'&&afford(P,COST.city))Object.keys(s.build).forEach(v=>{const b=s.build[v];b.p==p&&!b.city&&o.v.push(+v)});
+  if(tool=='road'&&(s.free>0||afford(P,COST.road)))B.edges.forEach((_,e)=>canRoad(s,e,p)&&o.e.push(e))}
+ return o}
+function status(s,P){if(s.winner!=null)return'🎉 '+s.players[s.winner].name+' の勝利!';
+ return{setup:s.sub=='settle'?'初期配置:開拓地を置く':'初期配置:隣に道路を置く',roll:'サイコロを振ってください',robber:'盗賊を動かすタイルを選択',main:'建設・交換、終わったらターン終了',discard:s.disc&&s.disc[0]?s.players[s.disc[0].p].name+' は'+s.disc[0].n+'枚捨ててください':''}[s.phase]+(s.free>0?'(街道建設:あと'+s.free+'本)':'')}
+function render(){
+ const el=document.getElementById('app');
+ if(!G){el.innerHTML='<div class="card" style="grid-column:1/-1"><b>人数を選んで開始</b><br>'+[2,3,4,5,6].map(n=>`<button data-n="${n}">${n}人</button>`).join('')+'</div>';return}
+ const ld=landed;landed=false;const s=G,p=cur(s),P=s.players[p],L=legal(s,p),pt=v=>B.verts[v].x+','+B.verts[v].y;
+ let g='';
+ B.hexes.forEach((h,i)=>{const t=s.tiles[i];
+  const hit=s.dice&&t.num&&t.num==s.dice[0]+s.dice[1];g+=`<polygon class="${hit?'hit':''}" points="${h.v.map(pt).join(' ')}" fill="${COL[t.type]}" stroke="${hit?'#ffd23f':'#7a6a4a'}" stroke-width="${hit?5:2}" stroke-linejoin="round"/><text x="${h.x}" y="${h.y-20}" text-anchor="middle" font-size="15">${EM[t.type]}</text>`;
+  if(t.num)g+=`<circle cx="${h.x}" cy="${h.y+3}" r="15" fill="#f8f1dc" stroke="#7a6a4a"/><text x="${h.x}" y="${h.y+4}" text-anchor="middle" font-size="13" font-weight="700" fill="${t.num==6||t.num==8?'#c22':'#222'}">${t.num}</text><text x="${h.x}" y="${h.y+13}" text-anchor="middle" font-size="5" letter-spacing="1" fill="#555">${'●'.repeat(6-Math.abs(7-t.num))}</text>`;
+  if(s.robber==i)g+=`<circle cx="${h.x}" cy="${h.y+(t.num?0:0)}" r="9" fill="#222" stroke="#fff" stroke-width="2" ${t.num?'opacity=".85"':''}/>`;});
+ B.ports.forEach((pt,i)=>{const A=B.verts[pt.a],C=B.verts[pt.b],mx=(A.x+C.x)/2,my=(A.y+C.y)/2,d=Math.hypot(mx,my),ox=mx+mx/d*24,oy=my+my/d*24,ty=s.ports[i];
+  g+=`<line x1="${A.x}" y1="${A.y}" x2="${ox}" y2="${oy}" stroke="#7a6a4a" stroke-width="1.5"/><line x1="${C.x}" y1="${C.y}" x2="${ox}" y2="${oy}" stroke="#7a6a4a" stroke-width="1.5"/><circle cx="${ox}" cy="${oy}" r="13" fill="${ty=='any'?'#f8f1dc':COL[ty]}" stroke="#7a6a4a"/><text x="${ox}" y="${oy+4}" text-anchor="middle" font-size="10" font-weight="700" fill="#222">${ty=='any'?'3:1':'2:1'}</text>`});
+ B.edges.forEach((ed,e)=>{if(s.roads[e]!=null){const A=B.verts[ed.a],C=B.verts[ed.b];g+=`<line x1="${A.x}" y1="${A.y}" x2="${C.x}" y2="${C.y}" stroke="#222" stroke-width="9" stroke-linecap="round"/><line x1="${A.x}" y1="${A.y}" x2="${C.x}" y2="${C.y}" stroke="${PC[s.roads[e]]}" stroke-width="5" stroke-linecap="round"/>`}});
+ for(const v in s.build){const b=s.build[v],V=B.verts[v];
+  {const x=V.x,y=V.y,q=b.city?[[-11,8],[-11,-2],[-3,-2],[-3,-9],[3,-14],[9,-9],[9,-2],[12,-2],[12,8]]:[[-8,7],[-8,-2],[0,-9],[8,-2],[8,7]];g+=`<polygon points="${q.map(c=>(x+c[0])+','+(y+c[1])).join(' ')}" fill="${PC[b.p]}" stroke="#222" stroke-width="2.2" stroke-linejoin="round"/>`}}
+ L.e.forEach(e=>{const ed=B.edges[e],A=B.verts[ed.a],C=B.verts[ed.b];g+=`<line class="hint" data-e="${e}" x1="${A.x}" y1="${A.y}" x2="${C.x}" y2="${C.y}" stroke="#fff" stroke-opacity=".75" stroke-width="10" stroke-linecap="round"/>`});
+ L.v.forEach(v=>{const V=B.verts[v];g+=`<circle class="hint" data-v="${v}" cx="${V.x}" cy="${V.y}" r="9" fill="#fff" fill-opacity=".8" stroke="${PC[p]}" stroke-width="3" stroke-dasharray="3 2"/>`});
+ L.h.forEach(h=>{const H=B.hexes[h];g+=`<circle class="hint" data-h="${h}" cx="${H.x}" cy="${H.y}" r="22" fill="#000" fill-opacity=".25" stroke="#fff" stroke-width="2"/>`});
+ const m=s.phase=='main'&&s.winner==null,tb=(k,l)=>`<button data-tool="${k}" class="${tool==k?'on':''}" ${m?'':'disabled'}>${l}</button>`;
+ const opt=RES.map(r=>`<option value="${r}">${JP[r]}</option>`).join('');
+ el.innerHTML=`<svg id="board" viewBox="${B.R>2?'-330 -305 660 610':'-240 -225 480 450'}">${g}</svg><div>
+ <div class="card" style="border-top:5px solid ${PC[p]}"><b style="color:${PC[p]}">● ${P.name} の番</b><br>${status(s,P)}<div id="dice" class="dicebox ${ld?'land':''} ${s.phase=='roll'&&s.winner==null?'tap':''}" ${s.phase=='roll'&&s.winner==null?'data-a="roll"':''}>${s.phase=='roll'&&s.winner==null?dieH(6)+dieH(6)+'<small>👆 タップして振る</small>':s.dice?s.dice.map(n=>dieH(n)).join('')+'<b class="sum">'+(s.dice[0]+s.dice[1])+'</b>':''}</div>${msg?`<br><span style="color:#c22">${msg}</span>`:''}</div>
+ <div class="card res">${RES.map(r=>`<span style="background:${COL[r]}">${EM[r]}${JP[r]} ${(s.phase=='discard'?s.players[s.disc[0].p]:P).res[r]}</span>`).join('')}${s.phase=='discard'?`<br><b>${s.players[s.disc[0].p].name}: ${s.disc[0].n}枚捨てる</b><br>${RES.map(r=>`${JP[r]}<input id="dc_${r}" type="number" min="0" value="0" style="width:42px">`).join(' ')}<button data-a="discard">捨てる</button>`:''}</div>
+ <div class="card">
+ ${tb('road','道路 木+レ')}${tb('settle','開拓地 木レ羊麦')}${tb('city','都市 麦2鉄3')}
+ <button data-a="end" ${m?'':'disabled'}>ターン終了</button><br>
+ <small>銀行・港交換</small> <select id="gv">${RES.map(r=>`<option value="${r}">${JP[r]} (${ratio(s,p,r)}:1)</option>`).join('')}</select>→<select id="gt">${opt}</select><button data-a="trade" ${m?'':'disabled'}>交換</button></div>
+ <div class="card"><small>プレイヤー交換</small><br><select id="ot">${s.players.map((q,i)=>i==p?'':`<option value="${i}">${q.name}</option>`).join('')}</select> 出す<select id="og">${opt}</select><input id="ogn" type="number" min="1" max="9" value="1" style="width:46px"> 欲しい<select id="oq">${opt}</select><input id="oqn" type="number" min="1" max="9" value="1" style="width:46px"><button data-a="offer" ${m?'':'disabled'}>提案</button>${s.offer?`<br><b>${s.players[s.offer.from].name}→${s.players[s.offer.to].name}</b> ${JP[s.offer.give]}×${s.offer.gn} ⇄ ${JP[s.offer.get]}×${s.offer.tn}<br><button data-a="yes">承諾</button><button data-a="no">拒否</button>`:''}</div>
+ <div class="card"><small>発展カード(山札${s.deck.length})</small> <button data-a="buydev" ${m?'':'disabled'}>購入 羊麦鉄</button><br>${[['knight','騎士'],['road','街道建設'],['plenty','収穫'],['monopoly','独占']].map(([c,l])=>`<button data-play="${c}" ${((s.phase=='roll'&&c=='knight')||m)&&!s.devPlayed&&s.winner==null&&P.dev[c]-P.nw[c]>0?'':'disabled'}>${l}×${P.dev[c]}</button>`).join('')}<br><small>収穫/独占の資源:</small><select id="pr1">${opt}</select><select id="pr2">${opt}</select><br><small>勝利点カード ${P.dev.vp}枚(購入したターンも有効)</small></div>
+ <div class="card">${s.players.map((q,i)=>`<span style="color:${PC[i]}">●</span> ${q.name}: ${vp(s,i)}点 (手札${total(q)}) ${s.lroad==i?'🛣️':''}${s.army==i?'⚔️':''} <small>道${s.len?s.len[i]:0} 騎${q.k}</small>`).join('<br>')}<br><small>10点で勝利 / 最長道路(5本以上)🛣️ 最大騎士(3枚以上)⚔️ 各2点</small></div>
+ <div class="card"><small>チャット</small><div id="chat">${(s.chat||[]).slice(-40).map(c=>`<div><b style="color:${PC[c.who]}">${s.players[c.who].name}</b> ${esc(c.text)}</div>`).join('')||'<small>まだ発言はありません</small>'}</div><select id="cw">${s.players.map((q,i)=>`<option value="${i}" ${i==p?'selected':''}>${q.name}</option>`).join('')}</select><button data-a="chat">送信</button><input id="ct" maxlength="200" placeholder="メッセージを入力(Enterで送信)" autocomplete="off"></div>
+ <div class="card" id="log"><small>ログ</small><br>${s.log.slice(0,12).join('<br>')||'-'}</div>
+ <button data-a="reset">最初から</button></div>`;
+ document.getElementById('gt').selectedIndex=1;document.getElementById('oq').selectedIndex=1;const ch=document.getElementById('chat');ch.scrollTop=ch.scrollHeight}
+function act(a){msg=reduce(G,a)||'';render()}
+document.getElementById('app').addEventListener('click',e=>{
+ const d=e.target.closest('[data-n],[data-tool],[data-a],[data-play],[data-v],[data-e],[data-h]');if(!d)return;const k=d.dataset;
+ if(k.n){G=newGame(+k.n,Date.now()|0);tool=null;msg='';render()}
+ else if(k.tool){tool=tool==k.tool?null:k.tool;render()}
+ else if(k.v!=null)act({t:G.phase=='setup'||tool!='city'?'settle':'city',v:+k.v});
+ else if(k.e!=null)act({t:'road',e:+k.e});
+ else if(k.h!=null)act({t:'robber',h:+k.h});
+ else if(k.a=='trade')act({t:'trade',give:gv.value,get:gt.value});
+ else if(k.a=='offer')act({t:'offer',to:+ot.value,give:og.value,gn:+ogn.value,get:oq.value,tn:+oqn.value});
+ else if(k.a=='yes'||k.a=='no')act({t:'answer',ok:k.a=='yes'});
+ else if(k.play)act({t:'play',c:k.play,r1:pr1.value,r2:pr2.value});
+ else if(k.a=='discard')act({t:'discard',c:Object.fromEntries(RES.map(r=>[r,+document.getElementById('dc_'+r).value||0]))});
+ else if(k.a=='roll')rollAnim();
+ else if(k.a=='chat')sendChat();
+ else if(k.a=='reset'){G=null;render()}
+ else if(k.a)act({t:k.a})});
+let rolling=false,landed=false;
+function rollAnim(){if(rolling||!G||G.phase!='roll'||G.winner!=null)return;rolling=true;
+ const el=document.getElementById('dice');el.className='dicebox roll';el.innerHTML=dieH(1)+dieH(1);
+ const iv=setInterval(()=>el.querySelectorAll('.die').forEach(d=>d.innerHTML=pips(1+Math.floor(Math.random()*6))),90);
+ setTimeout(()=>{clearInterval(iv);rolling=false;landed=true;act({t:'roll'})},1100)}
+function sendChat(){act({t:'chat',who:+document.getElementById('cw').value,text:document.getElementById('ct').value});const n=document.getElementById('ct');n&&n.focus()}
+document.getElementById('app').addEventListener('keydown',e=>{if(e.target.id=='ct'&&e.key=='Enter'&&!e.isComposing)sendChat()});
+render();
+</script></body></html>
