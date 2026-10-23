@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>開拓者の島</title>
+<title>開拓者の島（オンライン対戦版）</title>
 <style>
 :root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);--bg:#f4efe6;--fg:#2b2a28;--card:#fff;--line:#d8d0c0;--sea:#bfe0ee;color-scheme:light}
 html{scroll-padding-top:env(safe-area-inset-top,0px)}
@@ -14,7 +14,7 @@ h1{font-size:18px;margin:0;padding:10px 14px}
 @media(max-width:760px){#app{grid-template-columns:1fr}}
 .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:10px}
 #board{width:100%;background:var(--sea);border-radius:10px;max-height:80vh}
-button,select{font:inherit;padding:5px 10px;margin:2px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--fg);cursor:pointer}
+button,select,input{font:inherit;padding:5px 10px;margin:2px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--fg);cursor:pointer}
 button:disabled{opacity:.4;cursor:default}button.on{outline:2px solid #3b7dd8}
 .res span{display:inline-block;margin:2px 6px 2px 0;padding:1px 8px;border-radius:10px;color:#111}
 #log{font-size:12px;max-height:110px;overflow:auto;opacity:.85}
@@ -39,7 +39,7 @@ polygon.hit{animation:glow .9s ease-in-out infinite}
 #chat{max-height:140px;overflow:auto;font-size:13px;margin-bottom:6px}
 #ct{width:100%;font:inherit;padding:5px 8px;margin-top:4px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--fg)}
 </style></head><body>
-<h1>🏝️ 開拓者の島 <small style="font-weight:400">（カタン風・ホットシート版）</small></h1>
+<h1>🏝️ 開拓者の島 <small style="font-weight:400">（オンライン対戦版）</small> <span id="ping" style="font-size:12px;float:right;opacity:0.7"></span></h1>
 <div id="app"></div>
 <script>
 const RES=['wood','brick','sheep','wheat','ore'];
@@ -52,9 +52,8 @@ const EM={wood:'🌲',brick:'🧱',sheep:'🐑',wheat:'🌾',ore:'⛰️',desert
 const esc=t=>t.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const pips=n=>[...Array(9)].map((_,i)=>`<i class="${[[],[4],[0,8],[0,4,8],[0,2,6,8],[0,2,4,6,8],[0,2,3,5,6,8]][n].includes(i)?'p':''}"></i>`).join('');
 const dieH=n=>`<div class="die">${pips(n)}</div>`;
-// ---- 乱数(シード付き。通信時に全員で同じ結果になる) ----
+
 function rnd(s){s.seed=(s.seed+0x6D2B79F5)|0;let t=Math.imul(s.seed^s.seed>>>15,1|s.seed);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}
-// ---- 盤面の幾何(固定) ----
 function buildBoard(R){
  const hexes=[],V=new Map(),E=new Map(),verts=[],edges=[];
  for(let r=-R;r<=R;r++)for(let q=-R;q<=R;q++)if(Math.abs(q+r)<=R)hexes.push({q,r});
@@ -69,7 +68,7 @@ function buildBoard(R){
  return{hexes,verts,edges,E,ports,R}}
 let B=buildBoard(2);
 const eid=(a,b)=>B.E.get(Math.min(a,b)+'-'+Math.max(a,b));
-// ---- ゲーム状態 ----
+
 const Z=()=>({knight:0,vp:0,road:0,plenty:0,monopoly:0});
 function newGame(n,seed){B=buildBoard(n>4?3:2);
  const s={n,seed,phase:'setup',step:0,sub:'settle',turn:0,build:{},roads:{},dice:null,lastV:null,log:[],winner:null,
@@ -94,7 +93,7 @@ const ratio=(s,p,r)=>{let m=4;B.ports.forEach((pt,i)=>{const ty=s.ports[i];if([p
 function canSettle(s,v,p,free){return!s.build[v]&&B.verts[v].adj.every(u=>!s.build[u])&&(free||B.verts[v].adj.some(u=>s.roads[eid(v,u)]===p))}
 function canRoad(s,e,p){if(s.roads[e]!=null)return 0;const{a,b}=B.edges[e];
  return[a,b].some(v=>{const bd=s.build[v];if(bd)return bd.p==p;return B.verts[v].adj.some(u=>{const f=eid(v,u);return f!=e&&s.roads[f]===p})})}
-// ---- reducer: 全ての操作はここを通る(将来はこのactionをサーバー経由で配信) ----
+
 function reduce(s,a){
  const p=cur(s),P=s.players[p],log=m=>s.log.unshift(P.name+' '+m);
  if(a.t=='chat'){const t=String(a.text||'').trim().slice(0,200);if(!t||!s.players[a.who])return;s.chat.push({who:a.who,text:t});if(s.chat.length>100)s.chat.shift();return}
@@ -146,8 +145,10 @@ function reduce(s,a){
  case'end':if(s.phase!='main')return'まだ終了できません';s.turn=(s.turn+1)%s.n;s.phase='roll';s.dice=null;s.offer=null;s.devPlayed=false;s.free=0;for(const k in P.nw)P.nw[k]=0;return;
  }
  updRoad(s);if(vp(s,p)>=10){s.winner=p;log('の勝利!')}}
-// ---- UI ----
+
 let G=null,tool=null,msg='';
+let ws=null, roomName='', mySeat=0;
+
 function legal(s,p){const o={v:[],e:[],h:[]},P=s.players[p];
  if(s.winner!=null)return o;
  if(s.phase=='setup'){if(s.sub=='settle')B.verts.forEach((_,v)=>canSettle(s,v,p,1)&&o.v.push(v));
@@ -160,9 +161,20 @@ function legal(s,p){const o={v:[],e:[],h:[]},P=s.players[p];
  return o}
 function status(s,P){if(s.winner!=null)return'🎉 '+s.players[s.winner].name+' の勝利!';
  return{setup:s.sub=='settle'?'初期配置:開拓地を置く':'初期配置:隣に道路を置く',roll:'サイコロを振ってください',robber:'盗賊を動かすタイルを選択',main:'建設・交換、終わったらターン終了',discard:s.disc&&s.disc[0]?s.players[s.disc[0].p].name+' は'+s.disc[0].n+'枚捨ててください':''}[s.phase]+(s.free>0?'(街道建設:あと'+s.free+'本)':'')}
+
 function render(){
  const el=document.getElementById('app');
- if(!G){el.innerHTML='<div class="card" style="grid-column:1/-1"><b>人数を選んで開始</b><br>'+[2,3,4,5,6].map(n=>`<button data-n="${n}">${n}人</button>`).join('')+'</div>';return}
+ if(!G){
+  el.innerHTML=`<div class="card" style="grid-column:1/-1">
+   <b>🌐 オンライン対戦ルーム設定</b><br><br>
+   部屋名: <input id="roomInput" value="room1" style="width:120px"><br>
+   あなたの座席: <select id="seatInput"><option value="0">P1 (赤)</option><option value="1">P2 (青)</option><option value="2">P3 (橙)</option><option value="3">P4 (紫)</option></select><br><br>
+   <b>人数を選んでゲーム開始（または接続）</b><br>
+   ${[2,3,4].map(n=>`<button data-n="${n}">${n}人</button>`).join('')}
+   <button id="joinBtn">部屋に接続する</button>
+  </div>`;
+  return;
+ }
  const ld=landed;landed=false;const s=G,p=cur(s),P=s.players[p],L=legal(s,p),pt=v=>B.verts[v].x+','+B.verts[v].y;
  let g='';
  B.hexes.forEach((h,i)=>{const t=s.tiles[i];
@@ -179,24 +191,81 @@ function render(){
  L.h.forEach(h=>{const H=B.hexes[h];g+=`<circle class="hint" data-h="${h}" cx="${H.x}" cy="${H.y}" r="22" fill="#000" fill-opacity=".25" stroke="#fff" stroke-width="2"/>`});
  const m=s.phase=='main'&&s.winner==null,tb=(k,l)=>`<button data-tool="${k}" class="${tool==k?'on':''}" ${m?'':'disabled'}>${l}</button>`;
  const opt=RES.map(r=>`<option value="${r}">${JP[r]}</option>`).join('');
+ 
  el.innerHTML=`<svg id="board" viewBox="${B.R>2?'-330 -305 660 610':'-240 -225 480 450'}">${g}</svg><div>
- <div class="card" style="border-top:5px solid ${PC[p]}"><b style="color:${PC[p]}">● ${P.name} の番</b><br>${status(s,P)}<div id="dice" class="dicebox ${ld?'land':''} ${s.phase=='roll'&&s.winner==null?'tap':''}" ${s.phase=='roll'&&s.winner==null?'data-a="roll"':''}>${s.phase=='roll'&&s.winner==null?dieH(6)+dieH(6)+'<small>👆 タップして振る</small>':s.dice?s.dice.map(n=>dieH(n)).join('')+'<b class="sum">'+(s.dice[0]+s.dice[1])+'</b>':''}</div>${msg?`<br><span style="color:#c22">${msg}</span>`:''}</div>
+ <div class="card" style="border-top:5px solid ${PC[p]}"><b style="color:${PC[p]}">● ${P.name} の番</b> (操作席: P${mySeat+1})<br>${status(s,P)}<div id="dice" class="dicebox ${ld?'land':''} ${s.phase=='roll'&&s.winner==null?'tap':''}" ${s.phase=='roll'&&s.winner==null?'data-a="roll"':''}>${s.phase=='roll'&&s.winner==null?dieH(6)+dieH(6)+'<small>👆 タップして振る</small>':s.dice?s.dice.map(n=>dieH(n)).join('')+'<b class="sum">'+(s.dice[0]+s.dice[1])+'</b>':''}</div>${msg?`<br><span style="color:#c22">${msg}</span>`:''}</div>
  <div class="card res">${RES.map(r=>`<span style="background:${COL[r]}">${EM[r]}${JP[r]} ${(s.phase=='discard'?s.players[s.disc[0].p]:P).res[r]}</span>`).join('')}${s.phase=='discard'?`<br><b>${s.players[s.disc[0].p].name}: ${s.disc[0].n}枚捨てる</b><br>${RES.map(r=>`${JP[r]}<input id="dc_${r}" type="number" min="0" value="0" style="width:42px">`).join(' ')}<button data-a="discard">捨てる</button>`:''}</div>
  <div class="card">
  ${tb('road','道路 木+レ')}${tb('settle','開拓地 木レ羊麦')}${tb('city','都市 麦2鉄3')}
  <button data-a="end" ${m?'':'disabled'}>ターン終了</button><br>
  <small>銀行・港交換</small> <select id="gv">${RES.map(r=>`<option value="${r}">${JP[r]} (${ratio(s,p,r)}:1)</option>`).join('')}</select>→<select id="gt">${opt}</select><button data-a="trade" ${m?'':'disabled'}>交換</button></div>
  <div class="card"><small>プレイヤー交換</small><br><select id="ot">${s.players.map((q,i)=>i==p?'':`<option value="${i}">${q.name}</option>`).join('')}</select> 出す<select id="og">${opt}</select><input id="ogn" type="number" min="1" max="9" value="1" style="width:46px"> 欲しい<select id="oq">${opt}</select><input id="oqn" type="number" min="1" max="9" value="1" style="width:46px"><button data-a="offer" ${m?'':'disabled'}>提案</button>${s.offer?`<br><b>${s.players[s.offer.from].name}→${s.players[s.offer.to].name}</b> ${JP[s.offer.give]}×${s.offer.gn} ⇄ ${JP[s.offer.get]}×${s.offer.tn}<br><button data-a="yes">承諾</button><button data-a="no">拒否</button>`:''}</div>
- <div class="card"><small>発展カード(山札${s.deck.length})</small> <button data-a="buydev" ${m?'':'disabled'}>購入 羊麦鉄</button><br>${[['knight','騎士'],['road','街道建設'],['plenty','収穫'],['monopoly','独占']].map(([c,l])=>`<button data-play="${c}" ${((s.phase=='roll'&&c=='knight')||m)&&!s.devPlayed&&s.winner==null&&P.dev[c]-P.nw[c]>0?'':'disabled'}>${l}×${P.dev[c]}</button>`).join('')}<br><small>収穫/独占の資源:</small><select id="pr1">${opt}</select><select id="pr2">${opt}</select><br><small>勝利点カード ${P.dev.vp}枚(購入したターンも有効)</small></div>
+ <div class="card"><small>発展カード(山札${s.deck.length})</small> <button data-a="buydev" ${m?'':'disabled'}>購入 羊麦鉄</button><br>${[['knight','騎士'],['road','街道建設'],['plenty','収穫'],['monopoly','独占']].map(([c,l])=>`<button data-play="${c}" ${((s.phase=='roll'&&c=='knight')||m)&&!s.devPlayed&&s.winner==null&&P.dev[c]-P.nw[c]>0?'':'disabled'}>${l}×${P.dev[c]}</button>`).join('')}<br><small>収穫/独占の資源:</small><select id="pr1">${opt}</select><select id="pr2">${opt}</select><br><small>勝利点カード ${P.dev.vp}枚</small></div>
  <div class="card">${s.players.map((q,i)=>`<span style="color:${PC[i]}">●</span> ${q.name}: ${vp(s,i)}点 (手札${total(q)}) ${s.lroad==i?'🛣️':''}${s.army==i?'⚔️':''} <small>道${s.len?s.len[i]:0} 騎${q.k}</small>`).join('<br>')}<br><small>10点で勝利 / 最長道路(5本以上)🛣️ 最大騎士(3枚以上)⚔️ 各2点</small></div>
  <div class="card"><small>チャット</small><div id="chat">${(s.chat||[]).slice(-40).map(c=>`<div><b style="color:${PC[c.who]}">${s.players[c.who].name}</b> ${esc(c.text)}</div>`).join('')||'<small>まだ発言はありません</small>'}</div><select id="cw">${s.players.map((q,i)=>`<option value="${i}" ${i==p?'selected':''}>${q.name}</option>`).join('')}</select><button data-a="chat">送信</button><input id="ct" maxlength="200" placeholder="メッセージを入力(Enterで送信)" autocomplete="off"></div>
  <div class="card" id="log"><small>ログ</small><br>${s.log.slice(0,12).join('<br>')||'-'}</div>
- <button data-a="reset">最初から</button></div>`;
+ <button data-a="reset">部屋選択に戻る</button></div>`;
  document.getElementById('gt').selectedIndex=1;document.getElementById('oq').selectedIndex=1;const ch=document.getElementById('chat');ch.scrollTop=ch.scrollHeight}
-function act(a){msg=reduce(G,a)||'';render()}
+
+// ---- WebSocket接続とアクション送信 ----
+function connectWS(room, initialState = null){
+ roomName = room;
+ const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+ const host = 'catan.shoma-molmotto.workers.dev'; // あなたのWorkersドメイン
+ ws = new WebSocket(`${proto}//${host}/?room=${encodeURIComponent(room)}`);
+ 
+ const t0 = Date.now();
+ ws.onopen = () => {
+  document.getElementById('ping').innerText = `🔴 接続中 (${Date.now()-t0}ms)`;
+  if(initialState){
+   ws.send(JSON.stringify({ type: 'init', state: initialState }));
+  } else {
+   ws.send(JSON.stringify({ type: 'get' }));
+  }
+ };
+ ws.onmessage = (event) => {
+  try {
+   const data = JSON.parse(event.data);
+   if(data.state){
+    G = data.state;
+    render();
+   } else if(data.type === 'echo' && data.data && data.data.state){
+    G = data.data.state;
+    render();
+   }
+  } catch(e){console.error(e)}
+ };
+ ws.onclose = () => { document.getElementById('ping').innerText = '⚪ 切断'; };
+}
+
+function act(a){
+ msg = reduce(G, a) || '';
+ render();
+ // サーバーへアクションまたは状態を同期
+ if(ws && ws.readyState === WebSocket.OPEN){
+  ws.send(JSON.stringify({ type: 'action', action: a, state: G }));
+ }
+}
+
 document.getElementById('app').addEventListener('click',e=>{
- const d=e.target.closest('[data-n],[data-tool],[data-a],[data-play],[data-v],[data-e],[data-h]');if(!d)return;const k=d.dataset;
- if(k.n){G=newGame(+k.n,Date.now()|0);tool=null;msg='';render()}
+ const d=e.target.closest('[data-n],[data-tool],[data-a],[data-play],[data-v],[data-e],[data-h],#joinBtn');if(!d)return;
+ 
+ if(d.id === 'joinBtn'){
+  const r = document.getElementById('roomInput').value;
+  mySeat = +document.getElementById('seatInput').value;
+  connectWS(r);
+  return;
+ }
+ 
+ const k=d.dataset;
+ if(k.n){
+  const r = document.getElementById('roomInput') ? document.getElementById('roomInput').value : 'room1';
+  mySeat = document.getElementById('seatInput') ? +document.getElementById('seatInput').value : 0;
+  G = newGame(+k.n, Date.now()|0);
+  tool = null; msg = '';
+  connectWS(r, G);
+  render();
+ }
  else if(k.tool){tool=tool==k.tool?null:k.tool;render()}
  else if(k.v!=null)act({t:G.phase=='setup'||tool!='city'?'settle':'city',v:+k.v});
  else if(k.e!=null)act({t:'road',e:+k.e});
@@ -208,8 +277,12 @@ document.getElementById('app').addEventListener('click',e=>{
  else if(k.a=='discard')act({t:'discard',c:Object.fromEntries(RES.map(r=>[r,+document.getElementById('dc_'+r).value||0]))});
  else if(k.a=='roll')rollAnim();
  else if(k.a=='chat')sendChat();
- else if(k.a=='reset'){G=null;render()}
+ else if(k.a=='reset'){
+  if(ws) ws.close();
+  G = null; render();
+ }
  else if(k.a)act({t:k.a})});
+
 let rolling=false,landed=false;
 function rollAnim(){if(rolling||!G||G.phase!='roll'||G.winner!=null)return;rolling=true;
  const el=document.getElementById('dice');el.className='dicebox roll';el.innerHTML=dieH(1)+dieH(1);
