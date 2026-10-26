@@ -28,11 +28,41 @@ export class GameRoom {
             this.seats = (await this.state.storage.get("seats")) || {};
         }
 
-        // 席の自動割り当て
-        let seat = this.seats[clientId];
+        // 席の割り当て
+        const reqSeat = url.searchParams.get("seat");
+        let seat = undefined;
+
+        if (reqSeat !== null && reqSeat !== "") {
+            const parsed = parseInt(reqSeat, 10);
+            if (!isNaN(parsed)) {
+                seat = parsed;
+                this.seats[clientId] = seat;
+                await this.state.storage.put("seats", this.seats);
+            }
+        }
+
+        if (seat === undefined) {
+            seat = this.seats[clientId];
+        }
+
+        // 未割り当ての場合は空き席を自動検索（現在接続中のソケットのみ占有中とみなす）
         if (seat === undefined) {
             const maxPlayers = this.gameState ? this.gameState.n : 4;
-            const takenSeats = new Set(Object.values(this.seats));
+            // 現在アクティブな接続のclientIdを取得
+            const activeClients = new Set();
+            for (const ws of this.state.getWebSockets()) {
+                const tags = this.state.getTags(ws) || [];
+                for (const t of tags) activeClients.add(t);
+            }
+
+            // 接続中のクライアントが持つ席のみTakenとする
+            const takenSeats = new Set();
+            for (const [cId, sIdx] of Object.entries(this.seats)) {
+                if (activeClients.has(cId) && sIdx >= 0) {
+                    takenSeats.add(sIdx);
+                }
+            }
+
             let assignedSeat = -1;
             for (let i = 0; i < maxPlayers; i++) {
                 if (!takenSeats.has(i)) {
@@ -94,6 +124,14 @@ export class GameRoom {
                 if (saved) {
                     this.gameState = saved;
                     ws.send(JSON.stringify({ state: saved }));
+                }
+            } else if (data.type === "set_seat") {
+                const targetSeat = parseInt(data.seat, 10);
+                if (!isNaN(targetSeat) && data.clientId) {
+                    if (!this.seats) this.seats = {};
+                    this.seats[data.clientId] = targetSeat;
+                    await this.state.storage.put("seats", this.seats);
+                    ws.send(JSON.stringify({ type: "welcome", seat: targetSeat, state: this.gameState }));
                 }
             }
         } catch (err) {
