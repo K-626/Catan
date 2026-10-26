@@ -525,6 +525,300 @@
             flex-direction: column;
             gap: 2px;
         }
+
+        /* ==========================================
+           スマホ・タブレット向けレスポンシブ対応
+           (PC/デスクトップ表示はそのまま維持)
+           ========================================== */
+        button, select, input, .btn-action, .tab-btn {
+            touch-action: manipulation;
+        }
+
+        @media (max-width: 860px) {
+            html, body, #catan-app {
+                height: 100dvh;
+            }
+
+            /* ヘッダーのコンパクト化 */
+            header {
+                height: 42px;
+                min-height: 42px;
+                padding: 0 8px;
+                padding-left: max(8px, env(safe-area-inset-left));
+                padding-right: max(8px, env(safe-area-inset-right));
+            }
+
+            .header-title {
+                font-size: 13px;
+                gap: 4px;
+                flex-shrink: 0;
+            }
+
+            .header-title small {
+                display: none;
+            }
+
+            .header-info {
+                gap: 4px;
+                font-size: 10px;
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+            }
+
+            .status-pill {
+                padding: 2px 5px;
+                font-size: 10px;
+                white-space: nowrap;
+                max-width: 80px;
+            }
+
+            .status-pill span {
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+
+            #btn-mode-toggle {
+                padding: 2px 6px !important;
+                font-size: 10px !important;
+                white-space: nowrap;
+                flex-shrink: 0;
+            }
+
+            /* 縦分割レイアウト（ボードを上、操作パネルを下） */
+            .game-main {
+                flex-direction: column;
+            }
+
+            /* ボード表示領域：縦画面で最大化 */
+            .board-container {
+                flex: 0 0 46%;
+                height: 46%;
+                min-height: 220px;
+                max-height: 52%;
+                padding: 6px;
+                box-sizing: border-box;
+            }
+
+            #board-svg {
+                border-radius: 10px;
+            }
+
+            /* 下部操作パネル：幅100%かつスクロール可能に */
+            .side-panel {
+                flex: 1;
+                min-height: 0;
+                width: 100%;
+                min-width: 0;
+                max-width: 100%;
+                border-left: none;
+                border-top: 2px solid var(--line);
+                overflow-y: auto;
+                -webkit-overflow-scrolling: touch;
+                padding: 6px 8px calc(6px + env(safe-area-inset-bottom)) 8px;
+                gap: 6px;
+            }
+
+            /* プレイヤー情報バー */
+            .players-bar {
+                gap: 4px;
+            }
+
+            .player-badge {
+                padding: 4px 3px;
+                font-size: 10px;
+                border-radius: 6px;
+                gap: 1px;
+            }
+
+            .player-badge .p-name {
+                font-size: 10px;
+                gap: 3px;
+            }
+
+            .player-badge .p-dot {
+                width: 6px;
+                height: 6px;
+            }
+
+            .player-badge .p-stats {
+                font-size: 9px;
+            }
+
+            .player-badge .p-vp {
+                font-size: 11px;
+            }
+
+            /* ターン表示・ダイス */
+            .turn-box {
+                padding: 6px 8px;
+                gap: 6px;
+                border-radius: 6px;
+            }
+
+            .turn-info-text {
+                font-size: 11px;
+                line-height: 1.25;
+            }
+
+            .turn-info-text b {
+                font-size: 12px;
+            }
+
+            .die {
+                width: 30px;
+                height: 30px;
+                padding: 3px;
+                border-radius: 6px;
+            }
+
+            .die i {
+                width: 5px;
+                height: 5px;
+            }
+
+            .dice-sum {
+                font-size: 16px;
+                min-width: 18px;
+            }
+
+            .btn-roll {
+                padding: 6px 10px;
+                font-size: 11px;
+                border-radius: 6px;
+            }
+
+            /* アクションボタン */
+            .action-grid {
+                gap: 4px;
+            }
+
+            .btn-action {
+                padding: 5px 2px;
+                font-size: 10px;
+                border-radius: 6px;
+            }
+
+            .btn-action .cost {
+                font-size: 8px;
+            }
+
+            .btn-action .stock-badge {
+                font-size: 8px;
+                padding: 0 2px;
+            }
+
+            /* タブ切り替え */
+            .panel-tabs {
+                border-radius: 6px;
+                padding: 2px;
+            }
+
+            .tab-btn {
+                padding: 4px 0;
+                font-size: 10px;
+                border-radius: 5px;
+            }
+
+            .tab-content {
+                min-height: 70px;
+                max-height: 120px;
+                padding: 6px 8px;
+                font-size: 11px;
+                border-radius: 6px;
+            }
+
+            /* 所持資源（手札エリア） */
+            .my-hand-area {
+                padding: 5px 6px;
+                gap: 3px;
+                border-radius: 6px;
+            }
+
+            .hand-title {
+                font-size: 10px;
+            }
+
+            .hand-cards {
+                gap: 4px;
+            }
+
+            .res-card {
+                padding: 3px 1px;
+                border-radius: 5px;
+            }
+
+            .res-card .res-icon {
+                font-size: 13px;
+                margin-bottom: 0px;
+            }
+
+            .res-card .res-num {
+                font-size: 13px;
+            }
+
+            .res-card .res-lbl {
+                font-size: 8px;
+            }
+
+            /* モバイル用タップ当たり判定の拡大 */
+            .hint-v {
+                r: 12;
+            }
+            .hint-e {
+                stroke-width: 14;
+            }
+            .hint-h {
+                r: 25;
+            }
+
+            /* モーダル対応 */
+            .modal-card {
+                width: 94%;
+                max-width: 380px;
+                padding: 16px;
+                max-height: 85vh;
+                overflow-y: auto;
+            }
+        }
+
+        /* 横画面スマホ（高さが低い画面）の最適化 */
+        @media (max-width: 900px) and (max-height: 520px) and (orientation: landscape) {
+            header {
+                height: 36px;
+                min-height: 36px;
+                padding: 0 8px;
+            }
+
+            .game-main {
+                flex-direction: row;
+            }
+
+            .board-container {
+                flex: 1;
+                height: 100%;
+                min-height: 0;
+                max-height: 100%;
+                padding: 4px;
+            }
+
+            .side-panel {
+                width: 290px;
+                min-width: 290px;
+                max-width: 290px;
+                height: 100%;
+                border-top: none;
+                border-left: 1px solid var(--line);
+                overflow-y: auto;
+                padding: 6px 8px;
+                gap: 4px;
+            }
+
+            .tab-content {
+                min-height: 55px;
+                max-height: 80px;
+            }
+        }
     </style>
 </head>
 
@@ -1128,22 +1422,28 @@
         let roomName = 'room1';
         let mySeat = 0;
 
+        // クライアント固有ID（ブラウザごとに保持し、再接続時も同席をキープ）
+        let clientId = localStorage.getItem('catan_client_id');
+        if (!clientId) {
+            clientId = 'u_' + Math.random().toString(36).slice(2, 9) + Date.now().toString(36);
+            localStorage.setItem('catan_client_id', clientId);
+        }
+
         let reconnectTimer = null;
         function connectWS(room, initialState = null) {
             roomName = room;
             if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
             const host = 'catan.shoma-molmotto.workers.dev';
-            ws = new WebSocket(`wss://${host}/?room=${encodeURIComponent(room)}`);
+            ws = new WebSocket(`wss://${host}/?room=${encodeURIComponent(room)}&client=${encodeURIComponent(clientId)}`);
 
             const t0 = Date.now();
             ws.onopen = () => {
                 document.getElementById('ping-dot').innerText = '🟢';
                 document.getElementById('ping-text').innerText = `接続済 (${Date.now() - t0}ms)`;
                 document.getElementById('room-label').innerText = `Room: ${roomName}`;
-                document.getElementById('seat-label').innerText = `自席: ${PNAME[mySeat]}`;
                 connectWS._retries = 0;
                 if (initialState) {
-                    ws.send(JSON.stringify({ type: 'init', state: initialState }));
+                    ws.send(JSON.stringify({ type: 'init', state: initialState, clientId: clientId }));
                 } else {
                     ws.send(JSON.stringify({ type: 'get' }));
                 }
@@ -1151,6 +1451,20 @@
             ws.onmessage = (event) => {
                 try {
                     const data = JSON.parse(event.data);
+                    if (data.type === 'welcome') {
+                        if (data.seat !== undefined && data.seat >= 0) {
+                            mySeat = data.seat;
+                            document.getElementById('seat-label').innerText = `自席: ${PNAME[mySeat]}`;
+                        } else if (data.seat === -1) {
+                            mySeat = -1;
+                            document.getElementById('seat-label').innerText = `自席: 観戦中`;
+                        }
+                        if (data.state) {
+                            G = data.state;
+                        }
+                        render();
+                        return;
+                    }
                     if (data.state) {
                         const oldDice = G ? G.dice : null;
                         G = data.state;
