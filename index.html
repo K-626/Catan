@@ -522,13 +522,13 @@
         function connectWS(room, initialState = null) {
             roomName = room;
             if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
-            const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const host = 'catan.shoma-molmotto.workers.dev'; // あなたのWorkersドメイン
-            ws = new WebSocket(`${proto}//${host}/?room=${encodeURIComponent(room)}`);
+            const host = 'catan.shoma-molmotto.workers.dev';
+            ws = new WebSocket(`wss://${host}/?room=${encodeURIComponent(room)}`);
 
             const t0 = Date.now();
             ws.onopen = () => {
                 document.getElementById('ping').innerText = `🟢 接続済 (${Date.now() - t0}ms)`;
+                connectWS._retries = 0; // 接続成功でリトライカウントリセット
                 if (initialState) {
                     ws.send(JSON.stringify({ type: 'init', state: initialState }));
                 } else {
@@ -550,11 +550,18 @@
                 console.error('WebSocket error:', e);
             };
             ws.onclose = () => {
-                document.getElementById('ping').innerText = '⚪ 切断（再接続中...）';
-                // 3秒後に自動再接続（ゲーム中のみ）
-                if (G) reconnectTimer = setTimeout(() => connectWS(roomName), 3000);
+                if (!G) return; // ゲーム未開始なら再接続しない
+                const retries = (connectWS._retries = (connectWS._retries || 0) + 1);
+                if (retries > 5) {
+                    document.getElementById('ping').innerText = '⚪ 切断（再接続上限。ページを再読み込みしてください）';
+                    return;
+                }
+                const delay = Math.min(1000 * Math.pow(2, retries - 1), 30000); // 1秒→2秒→4秒...最大30秒
+                document.getElementById('ping').innerText = `⚪ 切断（${delay / 1000}秒後に再接続 ${retries}/5）`;
+                reconnectTimer = setTimeout(() => connectWS(roomName), delay);
             };
         }
+        connectWS._retries = 0;
 
         function act(a) {
             const err = reduce(G, a);
