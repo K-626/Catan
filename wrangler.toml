@@ -1,0 +1,11 @@
+name = "catan"            # Workerの名前（URLの catan.xxx.workers.dev の部分）
+main = "worker.js"        # エントリーポイントのファイル名
+compatibility_date = "2024-09-23"  # CloudflareのAPIバージョン固定
+
+[[durable_objects.bindings]]
+name = "GAME_ROOM"        # worker.js 内で env.GAME_ROOM として参照する名前
+class_name = "GameRoom"   # worker.js の export class GameRoom と一致させる
+
+[[migrations]]
+tag = "v1"                # Durable Objectの初回登録に必要（一度だけ）
+new_classes = ["GameRoom"]
