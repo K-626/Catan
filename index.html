@@ -163,6 +163,13 @@
             gap: 2px;
             box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
             position: relative;
+            cursor: pointer;
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+        }
+
+        .player-badge:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 3px 8px rgba(0, 0, 0, 0.12);
         }
 
         .player-badge.active-turn {
@@ -572,6 +579,15 @@
                 max-width: 80px;
             }
 
+            .status-pill.seat-picker {
+                max-width: 105px;
+                padding: 1px 4px;
+            }
+
+            .status-pill.seat-picker select {
+                font-size: 10px !important;
+            }
+
             .status-pill span {
                 overflow: hidden;
                 text-overflow: ellipsis;
@@ -838,8 +854,15 @@
                 <div class="status-pill">
                     <span id="room-label">Room: -</span>
                 </div>
-                <div class="status-pill">
-                    <span id="seat-label">自席: -</span>
+                <div class="status-pill seat-picker" style="padding: 2px 5px;">
+                    <label for="seat-select" style="font-weight:700; color:var(--text-muted); cursor:pointer;">自席:</label>
+                    <select id="seat-select" style="border:none; background:transparent; font-size:11px; font-weight:700; color:var(--fg); padding:0 2px; cursor:pointer; outline:none;">
+                        <option value="0">P1 (赤)</option>
+                        <option value="1">P2 (青)</option>
+                        <option value="2">P3 (橙)</option>
+                        <option value="3">P4 (紫)</option>
+                        <option value="-1">観戦</option>
+                    </select>
                 </div>
                 <button id="btn-mode-toggle" style="background:#fff; border:1px solid var(--line); color:var(--fg); border-radius:6px; padding:3px 8px; font-size:11px; cursor:pointer;">
                     🎮 ホットシート: OFF
@@ -1421,6 +1444,22 @@
         let ws = null;
         let roomName = 'room1';
         let mySeat = 0;
+        const savedSeat = localStorage.getItem('catan_preferred_seat');
+        if (savedSeat !== null && savedSeat !== "") {
+            mySeat = +savedSeat;
+        }
+
+        // 自席の変更（手動設定）
+        function changeMySeat(newSeat, syncServer = true) {
+            mySeat = +newSeat;
+            localStorage.setItem('catan_preferred_seat', mySeat);
+            const sel = document.getElementById('seat-select');
+            if (sel) sel.value = String(mySeat);
+            if (syncServer && ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'set_seat', seat: mySeat, clientId: clientId }));
+            }
+            render();
+        }
 
         // クライアント固有ID（ブラウザごとに保持し、再接続時も同席をキープ）
         let clientId = localStorage.getItem('catan_client_id');
@@ -1430,17 +1469,24 @@
         }
 
         let reconnectTimer = null;
-        function connectWS(room, initialState = null) {
+        function connectWS(room, initialState = null, preferredSeat = null) {
             roomName = room;
+            if (preferredSeat !== null && preferredSeat !== undefined) {
+                mySeat = +preferredSeat;
+                localStorage.setItem('catan_preferred_seat', mySeat);
+            }
             if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
             const host = 'catan.shoma-molmotto.workers.dev';
-            ws = new WebSocket(`wss://${host}/?room=${encodeURIComponent(room)}&client=${encodeURIComponent(clientId)}`);
+            const seatParam = (mySeat !== null && mySeat !== undefined) ? `&seat=${encodeURIComponent(mySeat)}` : '';
+            ws = new WebSocket(`wss://${host}/?room=${encodeURIComponent(room)}&client=${encodeURIComponent(clientId)}${seatParam}`);
 
             const t0 = Date.now();
             ws.onopen = () => {
                 document.getElementById('ping-dot').innerText = '🟢';
                 document.getElementById('ping-text').innerText = `接続済 (${Date.now() - t0}ms)`;
                 document.getElementById('room-label').innerText = `Room: ${roomName}`;
+                const sel = document.getElementById('seat-select');
+                if (sel) sel.value = String(mySeat);
                 connectWS._retries = 0;
                 if (initialState) {
                     ws.send(JSON.stringify({ type: 'init', state: initialState, clientId: clientId }));
@@ -1452,12 +1498,12 @@
                 try {
                     const data = JSON.parse(event.data);
                     if (data.type === 'welcome') {
-                        if (data.seat !== undefined && data.seat >= 0) {
-                            mySeat = data.seat;
-                            document.getElementById('seat-label').innerText = `自席: ${PNAME[mySeat]}`;
-                        } else if (data.seat === -1) {
-                            mySeat = -1;
-                            document.getElementById('seat-label').innerText = `自席: 観戦中`;
+                        if (data.seat !== undefined) {
+                            if (mySeat === undefined || mySeat === null) {
+                                mySeat = data.seat;
+                            }
+                            const sel = document.getElementById('seat-select');
+                            if (sel) sel.value = String(mySeat);
                         }
                         if (data.state) {
                             G = data.state;
@@ -1623,10 +1669,11 @@
                             <div>
                                 <label style="display:block; font-size:12px; color:var(--text-muted); margin-bottom:3px;">あなたの席</label>
                                 <select id="seatInput" style="width:100%;">
-                                    <option value="0">P1 (赤)</option>
-                                    <option value="1">P2 (青)</option>
-                                    <option value="2">P3 (橙)</option>
-                                    <option value="3">P4 (紫)</option>
+                                    <option value="0" ${mySeat === 0 ? 'selected' : ''}>P1 (赤)</option>
+                                    <option value="1" ${mySeat === 1 ? 'selected' : ''}>P2 (青)</option>
+                                    <option value="2" ${mySeat === 2 ? 'selected' : ''}>P3 (橙)</option>
+                                    <option value="3" ${mySeat === 3 ? 'selected' : ''}>P4 (紫)</option>
+                                    <option value="-1" ${mySeat === -1 ? 'selected' : ''}>観戦</option>
                                 </select>
                             </div>
                             <div style="display:flex; gap:8px; margin-top:6px;">
@@ -1737,7 +1784,7 @@
                 const isCur = (i === p);
                 const isMe = (i === mySeat);
                 return `
-                <div id="player-badge-${i}" class="player-badge ${isCur ? 'active-turn' : ''} ${isMe ? 'is-me' : ''}">
+                <div id="player-badge-${i}" class="player-badge ${isCur ? 'active-turn' : ''} ${isMe ? 'is-me' : ''}" title="${isMe ? 'あなたの席です' : 'クリックして ' + q.name + ' の席に着く'}">
                     <div class="p-name">
                         <span class="p-dot" style="background:${PC[i]}"></span>
                         <span>${q.name}</span>
@@ -1985,6 +2032,10 @@
             if (logBox) logBox.scrollTop = 0;
             const chatBox = document.getElementById('chat-box');
             if (chatBox) chatBox.scrollTop = chatBox.scrollHeight;
+            const seatSelect = document.getElementById('seat-select');
+            if (seatSelect && seatSelect.value !== String(mySeat)) {
+                seatSelect.value = String(mySeat);
+            }
         }
 
         const pips = n => [...Array(9)].map((_, i) => `<i class="${[[], [4], [0, 8], [0, 4, 8], [0, 2, 6, 8], [0, 2, 4, 6, 8], [0, 2, 3, 5, 6, 8]][n].includes(i) ? 'p' : ''}"></i>`).join('');
@@ -1998,20 +2049,32 @@
             if (btnNew) {
                 const n = +btnNew.dataset.n;
                 const r = document.getElementById('roomInput') ? document.getElementById('roomInput').value.trim() : 'room1';
-                mySeat = document.getElementById('seatInput') ? +document.getElementById('seatInput').value : 0;
+                const chosenSeat = document.getElementById('seatInput') ? +document.getElementById('seatInput').value : 0;
+                changeMySeat(chosenSeat, false);
                 G = newGame(n, Date.now() | 0);
                 activeTool = null;
                 errorMessage = '';
-                connectWS(r, G);
+                connectWS(r, G, chosenSeat);
                 render();
                 return;
             }
 
             if (e.target.id === 'btn-join') {
                 const r = document.getElementById('roomInput').value.trim() || 'room1';
-                mySeat = +document.getElementById('seatInput').value;
-                connectWS(r);
+                const chosenSeat = document.getElementById('seatInput') ? +document.getElementById('seatInput').value : 0;
+                changeMySeat(chosenSeat, false);
+                connectWS(r, null, chosenSeat);
                 return;
+            }
+
+            // プレイヤーバッジをクリックして席を着席・変更
+            const badge = e.target.closest('.player-badge');
+            if (badge) {
+                const pId = +badge.id.replace('player-badge-', '');
+                if (!isNaN(pId) && mySeat !== pId) {
+                    changeMySeat(pId);
+                    return;
+                }
             }
 
             if (e.target.id === 'btn-mode-toggle') {
@@ -2124,6 +2187,13 @@
                 sendChat();
             }
         });
+
+        const headerSeatSelect = document.getElementById('seat-select');
+        if (headerSeatSelect) {
+            headerSeatSelect.addEventListener('change', e => {
+                changeMySeat(+e.target.value);
+            });
+        }
 
         render();
     </script>
